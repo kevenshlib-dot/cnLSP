@@ -1,0 +1,25 @@
+# 上游克隆 / 独立仓库（不纳入本仓库）
+# bootstrap 改造见 fork：kevenshlib-dot/eureka-platform-bootstrap（cnlsp 分支）
+/eureka-platform-bootstrap/
+/platform-complete/
+/platform-lsp/
+# 手工构建用的上游模块源码克隆
+/build/
+
+# 大文件与本地工具链
+/migration/
+/tools/
+
+# 第三方版权资料（仅在文档中引用，不再分发）
+/docs/刘炜.pdf
+/docs/liuwei_pages/
+/docs/*.docx
+
+# 构建产物、系统文件
+target/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.env.*
+*.sql
