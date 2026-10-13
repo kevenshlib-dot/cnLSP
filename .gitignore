@@ -23,3 +23,9 @@ __pycache__/
 .env
 .env.*
 *.sql
+
+# annif-zh：仅限教学 / 授权数据及其训练出的模型，不进公开仓库
+/annif-zh/data/teaching/
+/annif-zh/data/licensed/
+/annif-zh/models/
+/annif-zh/docker/build.log
