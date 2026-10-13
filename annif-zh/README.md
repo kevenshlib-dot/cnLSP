@@ -93,7 +93,8 @@ api_key_env=LLM_API_KEY
 | `mode` | rerank | `rerank` 把未选中的候选降分保留；`filter` 直接丢弃 |
 | `endpoint` / `model` | Ollama / qwen3:8b | 任意 OpenAI 兼容接口 |
 | `api_key_env` | LLM_API_KEY | 存放 API 密钥的环境变量名。密钥不要写进配置 |
-| `temperature` / `max_tokens` / `timeout` | 0 / 512 / 120 | |
+| `temperature` / `max_tokens` / `timeout` | 0 / 1024 / 120 | |
+| `thinking` | 空 | 推理模型的思考开关，可设为 `disabled` 或 `enabled`；为空时不发送。DeepSeek V4 必须设为 `disabled` |
 | `max_chars` | 1500 | 原文最多发送多少字 |
 | `concurrency` | 4 | 同时发出的请求数 |
 | `examples` | 3 | 提示词里放几条已确认的示例 |
@@ -118,6 +119,18 @@ api_key_env=LLM_API_KEY
 | nDCG@10 | 0.526 | 0.543 |
 
 可见重排这一步本身就有效。这个"字面出现优先"的简单规则也是一条基线，真实大模型至少要超过它。
+
+### DeepSeek 实测
+
+200 篇的试验结果见 [大模型重排试验_200篇.md](大模型重排试验_200篇.md)。
+
+| 方案 | F1@5 | 相对 Annif |
+|---|---|---|
+| Annif | 0.339 | — |
+| 字面出现规则 | 0.363 | +0.024 |
+| DeepSeek flash（关闭思考） | 0.371 | +0.033，95% 置信区间 [+0.010, +0.056] |
+
+编目员盲评表由 `scripts/make_blind_review.py` 生成，填完后用 `scripts/score_blind_review.py` 统计。
 
 ## 从词表生成词典和停用词表
 

@@ -21,8 +21,9 @@ class LLMError(RuntimeError):
 
 class ChatClient:
     def __init__(self, endpoint: str, model: str, api_key_env: str | None = None,
-                 temperature: float = 0.0, max_tokens: int = 512, timeout: float = 120,
-                 retries: int = 1, cache_path: str | None = None) -> None:
+                 temperature: float = 0.0, max_tokens: int = 1024, timeout: float = 120,
+                 retries: int = 1, cache_path: str | None = None,
+                 extra_body: dict | None = None) -> None:
         self.url = endpoint.rstrip("/") + "/chat/completions"
         self.model = model
         self.api_key = os.environ.get(api_key_env) if api_key_env else None
@@ -31,9 +32,12 @@ class ChatClient:
         self.timeout = timeout
         self.retries = retries
         self.cache_path = cache_path
+        # 服务商特有的请求字段，例如 DeepSeek 的 {"thinking": {"type": "disabled"}}
+        self.extra_body = extra_body or {}
 
     def _cache_key(self, messages: list[dict]) -> str:
-        payload = json.dumps([self.model, self.temperature, messages], ensure_ascii=False, sort_keys=True)
+        payload = json.dumps([self.model, self.temperature, self.extra_body, messages],
+                             ensure_ascii=False, sort_keys=True)
         return hashlib.sha256(payload.encode()).hexdigest()
 
     def _cache(self) -> sqlite3.Connection:
@@ -62,7 +66,7 @@ class ChatClient:
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         body = {"model": self.model, "messages": messages,
-                "temperature": self.temperature, "max_tokens": self.max_tokens}
+                "temperature": self.temperature, "max_tokens": self.max_tokens, **self.extra_body}
         last_error = None
         for attempt in range(self.retries + 1):
             try:
@@ -70,7 +74,13 @@ class ChatClient:
                 if resp.status_code >= 500 or resp.status_code == 429:
                     raise LLMError(f"HTTP {resp.status_code}: {resp.text[:200]}")
                 resp.raise_for_status()
-                return resp.json()["choices"][0]["message"]["content"] or ""
+                choice = resp.json()["choices"][0]
+                content = (choice["message"].get("content") or "").strip()
+                if not content:
+                    # 推理模型把 max_tokens 用在思考上时，正文为空、finish_reason=length
+                    raise LLMError(f"空回复（finish_reason={choice.get('finish_reason')}），"
+                                   "推理模型请关闭思考或调大 max_tokens")
+                return content
             except (requests.RequestException, LLMError, KeyError, IndexError, ValueError) as err:
                 last_error = err
                 if attempt < self.retries:

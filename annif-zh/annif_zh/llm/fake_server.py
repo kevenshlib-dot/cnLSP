@@ -33,6 +33,7 @@ def fake_reply(prompt: str) -> str:
 class Handler(BaseHTTPRequestHandler):
     requests_seen = 0
     fail_next = 0          # 测试用：接下来几次请求返回 500
+    empty_next = 0         # 测试用：接下来几次请求返回空正文（模拟推理模型耗尽 max_tokens）
 
     def do_POST(self):  # noqa: N802
         if not self.path.endswith("/chat/completions"):
@@ -46,8 +47,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(500, "simulated failure")
             return
         prompt = body["messages"][-1]["content"]
-        reply = {"choices": [{"message": {"role": "assistant", "content": fake_reply(prompt)}}],
-                 "model": body.get("model")}
+        cls.last_body = body
+        if cls.empty_next > 0:
+            cls.empty_next -= 1
+            content, finish = "", "length"
+        else:
+            content, finish = fake_reply(prompt), "stop"
+        reply = {"choices": [{"message": {"role": "assistant", "content": content},
+                              "finish_reason": finish}], "model": body.get("model")}
         data = json.dumps(reply, ensure_ascii=False).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -61,7 +68,8 @@ class Handler(BaseHTTPRequestHandler):
 
 def start(port: int = 0) -> tuple[ThreadingHTTPServer, type[Handler]]:
     """在后台线程启动服务，返回 (server, handler 类)。port=0 表示自动选空闲端口。"""
-    handler = type("FakeHandler", (Handler,), {"requests_seen": 0, "fail_next": 0})
+    handler = type("FakeHandler", (Handler,), {"requests_seen": 0, "fail_next": 0,
+                                               "empty_next": 0, "last_body": None})
     server = ThreadingHTTPServer(("127.0.0.1", port), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, handler

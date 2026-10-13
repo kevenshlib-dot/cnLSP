@@ -107,3 +107,16 @@ def test_learn_disabled_by_default(env, tmp_path):
     (tmp_path / "projects.cfg").write_text(_cfg(endpoint), encoding="utf-8")
     result = CliRunner().invoke(annif.cli.cli, ["learn", "llm", "learn.tsv", "--projects", "projects.cfg"])
     assert result.exit_code != 0
+
+
+def test_empty_replies_fall_back(env):
+    run, endpoint, handler = env
+    handler.empty_next = 99
+    src = _labels(run("suggest", "src", input="开胸手术护理"))
+    assert _labels(run("suggest", "llm", input="开胸手术护理")) == src[:5]
+
+
+def test_thinking_param_is_sent(env):
+    run, endpoint, handler = env
+    run("suggest", "llm", input="网格与信息资源", cfg=_cfg(endpoint, "thinking=disabled"))
+    assert handler.last_body["thinking"] == {"type": "disabled"}

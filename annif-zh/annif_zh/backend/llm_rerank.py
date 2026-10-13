@@ -62,7 +62,8 @@ class LLMRerankBackend(BaseEnsembleBackend, backend.AnnifLearningBackend):
         "model": "qwen3:8b",
         "api_key_env": "LLM_API_KEY",   # 存放 API 密钥的环境变量名，不在配置里写密钥
         "temperature": 0.0,
-        "max_tokens": 512,
+        "max_tokens": 1024,
+        "thinking": "",          # 推理模型的思考开关：空=不发送；disabled / enabled（DeepSeek V4 等）
         "timeout": 120,
         "max_chars": 1500,       # 原文最多送多少字
         "concurrency": 4,        # 同时发出的请求数
@@ -121,26 +122,29 @@ class LLMRerankBackend(BaseEnsembleBackend, backend.AnnifLearningBackend):
             endpoint=params["endpoint"], model=params["model"], api_key_env=params["api_key_env"],
             temperature=float(params["temperature"]), max_tokens=int(params["max_tokens"]),
             timeout=float(params["timeout"]), cache_path=cache,
+            extra_body={"thinking": {"type": params["thinking"]}} if params["thinking"] else None,
         )
 
-    def _rerank_one(self, doc: Document, source_result, params, client, examples) -> list[SubjectSuggestion]:
+    def _rerank_one(self, doc: Document, source_result, params, client, examples
+                    ) -> tuple[list[SubjectSuggestion], bool]:
+        """返回 (推荐, 是否由大模型重排)；回退时第二项为 False。"""
         items = [(s.subject_id, self._label(s.subject_id), s.score) for s in source_result]
         candidates = make_candidates(items, int(params["candidates"]))
         if not candidates:
-            return []
+            return [], True
         fallback = [SubjectSuggestion(subject_id=c.subject_id, score=c.score) for c in candidates]
         try:
             messages = build_messages(doc.text, candidates, int(params["select"]),
                                       examples, int(params["max_chars"]))
             picks = parse_response(client.complete(messages), {c.key for c in candidates})
         except Exception as err:  # 网络、超时、回复格式错误等，一律回退
-            self.warning(f"大模型重排失败，返回来源排序：{err}")
-            return fallback
+            self.debug(f"大模型重排失败，返回来源排序：{err}")
+            return fallback, False
         if not picks:
-            self.warning("大模型没有选出任何候选，返回来源排序")
-            return fallback
+            self.debug("大模型没有选出任何候选，返回来源排序")
+            return fallback, False
         merged = merge(candidates, picks, float(params["blend"]), params["mode"])
-        return [SubjectSuggestion(subject_id=sid, score=score) for sid, score in merged]
+        return [SubjectSuggestion(subject_id=sid, score=score) for sid, score in merged], True
 
     def _suggest_batch(self, documents: list[Document], params: dict[str, Any]) -> SuggestionBatch:
         sources = annif.util.parse_sources(params["sources"])
@@ -150,8 +154,13 @@ class LLMRerankBackend(BaseEnsembleBackend, backend.AnnifLearningBackend):
         client = self._client(params)
         examples = self._load_examples(int(params["examples"]))
         with ThreadPoolExecutor(max_workers=max(1, int(params["concurrency"]))) as pool:
-            results = list(pool.map(
+            outcomes = list(pool.map(
                 lambda i: self._rerank_one(documents[i], base[i], params, client, examples),
                 range(len(documents)),
             ))
-        return SuggestionBatch.from_sequence(results, self.project.subjects, limit=int(params["limit"]))
+        failed = sum(1 for _, ok in outcomes if not ok)
+        if failed:
+            self.warning(f"本批 {len(documents)} 篇中 {failed} 篇大模型重排失败，已回退为来源排序"
+                         "（用 --verbosity DEBUG 查看原因）")
+        return SuggestionBatch.from_sequence([r for r, _ in outcomes], self.project.subjects,
+                                             limit=int(params["limit"]))
