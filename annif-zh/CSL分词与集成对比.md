@@ -65,6 +65,22 @@
 
 全量结果和前 5,000 篇的结果一致，说明结论不是子集带来的偶然现象。
 
+## 端到端复核：原始中文 + jieba 分析器（测试集前 5,000 篇）
+
+这一轮直接把原始中文交给 Annif，由 `annif_zh` 的 jieba 分析器在 Annif 内部分词：
+
+- 分析器配置：`jieba(userdict=…,stopwords=…)`
+- 项目配置：[configs/csl-keywords-jieba-raw.cfg](configs/csl-keywords-jieba-raw.cfg)
+
+| 模型 | 离线分词版 F1@5 | 端到端 F1@5 |
+|---|---|---|
+| TF-IDF | 0.299 | 0.299 |
+| Omikuji | 0.335 | 0.337 |
+| fastText | 0.215 | 0.212 |
+| 加权集成 | 0.346 | 0.344 |
+
+两种做法结果一致。剩下的微小差异来自 hyperopt 每次调出的集成权重不同：端到端这次是 0.14 / 0.70 / 0.16。
+
 ## 集成权重（TF-IDF / Omikuji / fastText，由 hyperopt 在验证集上调出）
 
 | 版本 | TF-IDF | Omikuji | fastText |

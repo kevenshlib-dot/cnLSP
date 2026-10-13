@@ -11,8 +11,13 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 # nn 附加项指定的 tensorflow-cpu 没有 linux/aarch64 wheel，改为单独安装同版本的 tensorflow
 RUN pip install --no-cache-dir "annif[omikuji,fasttext]==1.4.2" "tensorflow~=2.20.0" "lmdb~=1.7.3" \
-        jieba opencc-python-reimplemented \
+        "jieba==0.42.1" opencc-python-reimplemented \
     && python -m nltk.downloader -d /usr/local/share/nltk_data punkt_tab
+
+# annif-zh 扩展：jieba 分析器，并登记进 Annif
+COPY pyproject.toml /opt/annif-zh/
+COPY annif_zh /opt/annif-zh/annif_zh
+RUN pip install --no-cache-dir --no-deps /opt/annif-zh && python -m annif_zh.register
 
 WORKDIR /annif-projects
 CMD ["annif", "--help"]

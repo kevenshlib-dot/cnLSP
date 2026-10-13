@@ -1,0 +1,17 @@
+[project]
+name = "annif-zh"
+version = "0.1.0"
+description = "Chinese extensions for Annif: jieba analyzer and vocabulary tools"
+requires-python = ">=3.10,<3.14"
+license = "Apache-2.0"
+dependencies = ["annif==1.4.2", "jieba==0.42.1"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["annif_zh"]

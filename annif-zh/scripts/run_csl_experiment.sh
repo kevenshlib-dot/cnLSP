@@ -10,11 +10,12 @@ DATA="${DATA:-annif-csl-server}"            # data/teaching/ 下的数据集目�
 NAME="${NAME:-csl-keywords-ensemble}"        # models/ 下的输出目录
 IN="${ROOT}/data/teaching/${DATA}/prepared-keywords"
 OUT="${ROOT}/models/${NAME}"
+CONFIG="${CONFIG:-csl-keywords-ensemble.cfg}"   # configs/ 下的项目配置
 IMAGE="${IMAGE:-annif-zh:1.4.2}"
 JOBS="${JOBS:-12}"
 STEPS="${STEPS:-vocab base hyperopt fusion eval}"
 # PAV 要为 2 万多个主题逐一拟合，单线程一个来源就超过 1.5 小时，默认不跑
-FUSION="${FUSION:-csl-nn}"
+FUSION="${FUSION-csl-nn}"                # 设为空字符串即跳过
 # nn_ensemble 让每个来源对每篇文档给全部 2 万多个主题打分，又慢又占内存；
 # Annif 建议 1k–10k 篇训练文档，这里取 dev 前 1 万篇、8 个进程
 FUSION_DOCS="${FUSION_DOCS:-10000}"
@@ -28,7 +29,7 @@ EVAL="${EVAL:-csl-tfidf csl-omikuji csl-fasttext csl-ensemble csl-nn}"
 
 mkdir -p "$OUT"
 # 配置只在首次运行时复制，以免覆盖 hyperopt 调好的集成权重
-[[ -f "${OUT}/projects.cfg" ]] || cp "${ROOT}/configs/csl-keywords-ensemble.cfg" "${OUT}/projects.cfg"
+[[ -f "${OUT}/projects.cfg" ]] || cp "${ROOT}/configs/${CONFIG}" "${OUT}/projects.cfg"
 cd -- "$OUT"
 
 run() {

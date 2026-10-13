@@ -1,0 +1,4 @@
+data/
+models/
+docker/build.log
+**/__pycache__/
