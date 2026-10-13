@@ -53,6 +53,72 @@ analyzer=jieba(userdict=vocab/userdict.txt,hmm=0,token_min_length=2)
 - 配置里的路径相对于 Annif 工作目录，不能含逗号。
 - 分析器可以被 pickle（Omikuji 会序列化它）。jieba 分词器不进入序列化结果，加载后按需重建。
 
+## llm_rerank 后端：大模型在候选中重排
+
+它的接入方式参照 Annif 自带的 Omikuji 后端：
+
+- 大模型本身在 Annif 外面运行，可以是 Ollama、vLLM 或云端 API，通过 OpenAI 兼容接口调用。
+- Annif 里只放一个很薄的适配层 [annif_zh/backend/llm_rerank.py](annif_zh/backend/llm_rerank.py)，按需导入。
+
+### 工作流程
+
+1. 从 `sources` 指定的项目取前 `candidates` 个候选。
+2. 把候选编号成 C1…Cn，连同原文交给大模型，要求它只按编号挑选，并给出置信度。不认识的编号一律丢弃，所以结果不会超出词表。
+3. 最终分数 = `blend` × 大模型置信度 + (1 − `blend`) × 来源分数。`mode=filter` 时丢弃大模型没选中的候选。
+4. 网络、超时或回复格式出错时，原样返回来源项目的排序，并记一条警告。
+5. 回复缓存在项目数据目录的 `llm-cache.sqlite3` 里，重复评测时不重复调用大模型。
+
+### 配置示例
+
+完整示例见 [configs/csl-llm-rerank.cfg](configs/csl-llm-rerank.cfg)。
+
+```ini
+[csl-llm]
+backend=llm_rerank
+sources=csl-ensemble
+candidates=30
+select=8
+endpoint=http://host.docker.internal:11434/v1
+model=qwen3:8b
+api_key_env=LLM_API_KEY
+```
+
+### 参数
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `candidates` | 30 | 交给大模型的候选数 |
+| `select` | 8 | 让大模型最多选几个 |
+| `blend` | 0.7 | 最终分数中大模型置信度占的权重 |
+| `mode` | rerank | `rerank` 把未选中的候选降分保留；`filter` 直接丢弃 |
+| `endpoint` / `model` | Ollama / qwen3:8b | 任意 OpenAI 兼容接口 |
+| `api_key_env` | LLM_API_KEY | 存放 API 密钥的环境变量名。密钥不要写进配置 |
+| `temperature` / `max_tokens` / `timeout` | 0 / 512 / 120 | |
+| `max_chars` | 1500 | 原文最多发送多少字 |
+| `concurrency` | 4 | 同时发出的请求数 |
+| `examples` | 3 | 提示词里放几条已确认的示例 |
+| `cache` | 1 | 是否缓存大模型回复 |
+| `allow_learn` | 0 | 是否允许 `learn` 写入示例 |
+
+### 人工校准
+
+设置 `allow_learn=1` 后，可以把编目员确认过的记录交给这个项目：用命令 `annif learn csl-llm 确认记录.tsv`，或调用 REST 接口 `POST /v1/projects/csl-llm/learn`。
+
+这些记录会追加到 `examples.jsonl`，其中最近的 `examples` 条作为少样本示例放进提示词。
+
+### 离线测试
+
+[annif_zh/llm/fake_server.py](annif_zh/llm/fake_server.py) 是一个假的大模型服务，提供同样的接口。它的规则是挑出原文中字面出现的候选，回复外面包一层 `<think>` 推理块，用来检验解析是否稳健。
+
+在 CSL 测试集前 1,000 篇上，用它重排加权集成的结果：
+
+| 指标 | 只用加权集成 | 加上假大模型重排 |
+|---|---|---|
+| F1@5 | 0.352 | 0.371 |
+| nDCG@10 | 0.526 | 0.543 |
+
+可见重排这一步本身就有效。这个"字面出现优先"的简单规则也是一条基线，真实大模型至少要超过它。
+
 ## 从词表生成词典和停用词表
 
 ```bash
